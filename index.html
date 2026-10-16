@@ -48,12 +48,46 @@
     font-weight: 800;
     text-shadow: 0 2px 4px rgba(0,0,0,0.12);
   }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
   .header-total {
     font-size: 14px;
     font-weight: 700;
     opacity: 0.95;
     text-align: right;
   }
+  .header-btn {
+    background: rgba(255,255,255,0.25);
+    border: 2px solid rgba(255,255,255,0.4);
+    color: white;
+    padding: 7px 14px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .header-btn:active { transform: scale(0.94); background: rgba(255,255,255,0.4); }
+  .toast {
+    position: fixed;
+    left: 50%;
+    top: calc(80px + env(safe-area-inset-top));
+    transform: translate(-50%, -10px);
+    background: var(--text);
+    color: white;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 20;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
   main {
     max-width: 640px;
     margin: 0 auto;
@@ -337,6 +371,7 @@
     font-size: 14px;
     color: var(--muted);
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .send-btn {
     flex: 0 0 auto;
@@ -370,8 +405,13 @@
 
 <header>
   <h1>💸 Split It</h1>
-  <div class="header-total" id="headerTotal"></div>
+  <div class="header-right">
+    <div class="header-total" id="headerTotal"></div>
+    <button class="header-btn" id="shareBtn">🔗 Share</button>
+  </div>
 </header>
+
+<div class="toast" id="toast"></div>
 
 <main>
   <section class="card">
@@ -457,7 +497,7 @@
   const STORAGE_KEY = 'splitit.v1';
   const COLORS = ['#1cc29f', '#ff7a59', '#5b8def', '#a66bd3', '#f2b134', '#e5533d', '#3cb4c6', '#8bc34a'];
 
-  let state = load();
+  let state = { people: [], expenses: [] };
   let editingPersonId = null;
   let editingExpenseId = null;
 
@@ -471,7 +511,114 @@
 
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+    updateUrl();
   }
+
+  // ---------- Shareable URL ----------
+  // The whole session lives in the URL hash (#s=...) so the link can be sent
+  // to anyone. It's packed into arrays (people referenced by index) and
+  // deflate-compressed to keep the link short.
+
+  function pack(st) {
+    const idx = {};
+    st.people.forEach((p, i) => idx[p.id] = i);
+    return [
+      st.people.map(p => p.phone ? [p.name, p.phone] : [p.name]),
+      st.expenses
+        .filter(e => e.paidBy in idx)
+        .map(e => [e.desc, e.amount, idx[e.paidBy], e.splitWith.filter(id => id in idx).map(id => idx[id])])
+    ];
+  }
+
+  function unpack(data) {
+    const [people, expenses] = data;
+    if (!Array.isArray(people) || !Array.isArray(expenses)) throw new Error('bad data');
+    const ppl = people.map(([name, phone]) => ({ id: uid(), name: String(name), phone: phone ? String(phone) : '' }));
+    const exps = expenses
+      .filter(([, amount, payer, split]) => ppl[payer] && Number.isInteger(amount) && amount > 0 && Array.isArray(split))
+      .map(([desc, amount, payer, split]) => ({
+        id: uid(),
+        desc: String(desc),
+        amount,
+        paidBy: ppl[payer].id,
+        splitWith: split.filter(i => ppl[i]).map(i => ppl[i].id)
+      }))
+      .filter(e => e.splitWith.length);
+    return { people: ppl, expenses: exps };
+  }
+
+  function toB64(bytes) {
+    let bin = '';
+    bytes.forEach(b => bin += String.fromCharCode(b));
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function fromB64(str) {
+    const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(bin, c => c.charCodeAt(0));
+  }
+
+  async function pipe(bytes, stream) {
+    const out = new Blob([bytes]).stream().pipeThrough(stream);
+    return new Uint8Array(await new Response(out).arrayBuffer());
+  }
+
+  // "z" prefix = deflate-compressed, "j" = plain (for older browsers).
+  async function encodeState(st) {
+    const bytes = new TextEncoder().encode(JSON.stringify(pack(st)));
+    if (window.CompressionStream) {
+      try { return 'z' + toB64(await pipe(bytes, new CompressionStream('deflate-raw'))); } catch (e) {}
+    }
+    return 'j' + toB64(bytes);
+  }
+
+  async function decodeState(code) {
+    let bytes = fromB64(code.slice(1));
+    if (code[0] === 'z') bytes = await pipe(bytes, new DecompressionStream('deflate-raw'));
+    else if (code[0] !== 'j') throw new Error('unknown format');
+    return unpack(JSON.parse(new TextDecoder().decode(bytes)));
+  }
+
+  function hashCode() {
+    const m = location.hash.match(/[#&]s=([^&]+)/);
+    return m ? m[1] : null;
+  }
+
+  async function shareUrl() {
+    const base = location.href.split('#')[0];
+    if (!state.people.length && !state.expenses.length) return base;
+    return base + '#s=' + await encodeState(state);
+  }
+
+  let urlVersion = 0;
+  async function updateUrl() {
+    const v = ++urlVersion;
+    const url = await shareUrl();
+    if (v === urlVersion) history.replaceState(null, '', url);
+  }
+
+  function toast(text) {
+    const t = document.getElementById('toast');
+    t.textContent = text;
+    t.classList.add('show');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  document.getElementById('shareBtn').onclick = async () => {
+    if (!state.people.length) { toast('Add some people first'); return; }
+    const url = await shareUrl();
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Split It', text: 'Our shared expenses', url }); } catch (e) {}
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('Link copied 📋');
+    } catch (e) {
+      prompt('Copy this link:', url);
+    }
+  };
 
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -749,18 +896,19 @@
     return `sms:${cleanPhone(phone)}${isIOS ? '&' : '?'}body=${encodeURIComponent(body)}`;
   }
 
-  function messageFor(id, transfers) {
+  function messageFor(id, transfers, link) {
     const p = person(id);
     const lines = [];
     transfers.forEach(t => {
       if (t.from === id) lines.push(`• You owe ${personName(t.to)} ${money(t.amount)}`);
       if (t.to === id) lines.push(`• ${personName(t.from)} owes you ${money(t.amount)}`);
     });
-    return `Hi ${p.name}! Here's where we've landed on our shared expenses 💸\n\n${lines.join('\n')}\n\nSent from Split It`;
+    return `Hi ${p.name}! Here's where we've landed on our shared expenses 💸\n\n${lines.join('\n')}\n\nSee the breakdown: ${link}`;
   }
 
-  function openSettle() {
+  async function openSettle() {
     const transfers = settlements();
+    const link = await shareUrl();
     const el = document.getElementById('settleContent');
     if (!transfers.length) {
       el.innerHTML = '<div class="settled-all">🎉 Everyone’s square — nobody owes anything.</div>';
@@ -770,7 +918,7 @@
 
     const involved = state.people.filter(p => transfers.some(t => t.from === p.id || t.to === p.id));
     const msgs = involved.map(p => {
-      const body = messageFor(p.id, transfers);
+      const body = messageFor(p.id, transfers, link);
       const hasPhone = cleanPhone(p.phone).length > 0;
       return `<div class="msg">
         <div class="msg-head">
@@ -810,7 +958,35 @@
     save(); render(); closeModals();
   };
 
-  render();
+  function sameData(a, b) {
+    return JSON.stringify(pack(a)) === JSON.stringify(pack(b));
+  }
+
+  // A shared link wins over what's on this device, but ask first if that
+  // would throw away a different session saved here.
+  async function init() {
+    const local = load();
+    state = local;
+    const code = hashCode();
+    if (code) {
+      try {
+        const shared = await decodeState(code);
+        const hasLocal = local.people.length || local.expenses.length;
+        if (!hasLocal || sameData(local, shared) ||
+            confirm('Open the shared session? This replaces the one saved on this device.')) {
+          state = shared;
+        }
+      } catch (e) {
+        toast('That share link looks broken');
+      }
+    }
+    save();
+    render();
+  }
+
+  window.addEventListener('hashchange', () => { if (hashCode()) { closeModals(); init(); } });
+
+  init();
 </script>
 </body>
 </html>
