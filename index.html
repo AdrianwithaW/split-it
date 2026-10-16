@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Split It</title>
+<style>
+  :root {
+    --primary: #1cc29f;
+    --primary-dark: #14a385;
+    --owe: #e5533d;
+    --owed: #14a385;
+    --bg: #f2f5f4;
+    --card: #ffffff;
+    --text: #1f2a2e;
+    --muted: #6b7a80;
+    --line: #e2e8e6;
+  }
+  *, *::before, *::after {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", sans-serif;
+    color: var(--text);
+  }
+  header {
+    position: sticky;
+    top: 0;
+    padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 70%, white), var(--primary));
+    color: white;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.12);
+  }
+  .header-total {
+    font-size: 14px;
+    font-weight: 700;
+    opacity: 0.95;
+    text-align: right;
+  }
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 16px 16px calc(110px + env(safe-area-inset-bottom));
+  }
+  .card {
+    background: var(--card);
+    border-radius: 18px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.04), 0 6px 14px rgba(0,0,0,0.05);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .card-head h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .add-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 8px 14px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .add-btn:active { transform: scale(0.95); }
+  .empty {
+    color: var(--muted);
+    font-size: 14px;
+    padding: 6px 0;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .row:first-of-type { border-top: none; }
+  .avatar {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    color: white;
+    font-size: 16px;
+  }
+  .row-main { flex: 1 1 auto; min-width: 0; }
+  .row-title {
+    font-weight: 700;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row-amt {
+    flex: 0 0 auto;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .row-amt small {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .pos { color: var(--owed); }
+  .neg { color: var(--owe); }
+
+  .settle-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+    z-index: 4;
+  }
+  .settle-btn {
+    display: block;
+    width: 100%;
+    max-width: 608px;
+    margin: 0 auto;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 18px;
+    padding: 18px;
+    font-size: 19px;
+    font-weight: 800;
+    font-family: inherit;
+    box-shadow: 0 4px 0 var(--primary-dark), 0 8px 18px rgba(0,0,0,0.12);
+    cursor: pointer;
+  }
+  .settle-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--primary-dark); }
+  .settle-btn:disabled { background: #b8c4c1; box-shadow: none; cursor: default; }
+
+  /* Modals */
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 30, 30, 0.5);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 10;
+  }
+  .modal.show { opacity: 1; pointer-events: auto; }
+  .modal-box {
+    background: white;
+    width: 100%;
+    max-width: 560px;
+    max-height: 92vh;
+    overflow-y: auto;
+    border-radius: 22px 22px 0 0;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    transform: translateY(30px);
+    transition: transform 0.2s;
+  }
+  @media (min-width: 600px) {
+    .modal { align-items: center; }
+    .modal-box { border-radius: 22px; }
+  }
+  .modal.show .modal-box { transform: translateY(0); }
+  .modal-title {
+    margin: 0 0 14px;
+    font-size: 20px;
+    font-weight: 800;
+  }
+  label.field {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  label.field input, label.field select {
+    display: block;
+    width: 100%;
+    margin-top: 5px;
+    padding: 12px;
+    font-size: 16px;
+    font-family: inherit;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    background: white;
+    color: var(--text);
+  }
+  label.field input:focus, label.field select:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+  .split-list {
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    padding: 4px 12px;
+    margin-bottom: 12px;
+  }
+  .split-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--primary-dark);
+    font-weight: 700;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+  .split-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
+  }
+  .split-row:first-child { border-top: none; }
+  .split-row input[type=checkbox] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--primary);
+  }
+  .split-row .name { flex: 1 1 auto; }
+  .split-row .share {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+  }
+  .modal-btn {
+    flex: 1;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 800;
+    font-family: inherit;
+    border: none;
+    border-radius: 14px;
+    background: var(--primary);
+    color: white;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+  }
+  .modal-btn.secondary { background: #e8eeec; color: var(--text); }
+  .modal-btn.danger { background: #fde8e4; color: var(--owe); flex: 0 0 auto; }
+  .modal-btn:active { transform: scale(0.97); }
+  .error {
+    color: var(--owe);
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 1em;
+    margin: -4px 0 8px;
+  }
+
+  /* Settle up */
+  .transfer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
+  }
+  .transfer:first-child { border-top: none; }
+  .transfer .arrow { color: var(--muted); }
+  .transfer .amt { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .msg {
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .msg-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .msg-head strong { font-size: 15px; }
+  .msg-body {
+    font-size: 14px;
+    color: var(--muted);
+    white-space: pre-wrap;
+  }
+  .send-btn {
+    flex: 0 0 auto;
+    background: var(--primary);
+    color: white;
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-weight: 800;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .send-btn.sent { background: #e8eeec; color: var(--muted); }
+  .send-btn.disabled { background: #e8eeec; color: var(--muted); pointer-events: none; }
+  .section-label {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 18px 0 8px;
+  }
+  .settled-all {
+    text-align: center;
+    font-size: 17px;
+    font-weight: 700;
+    padding: 20px 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💸 Split It</h1>
+  <div class="header-total" id="headerTotal"></div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="card-head">
+      <h2>People</h2>
+      <button class="add-btn" id="addPersonBtn">+ Person</button>
+    </div>
+    <div id="peopleList"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Expenses</h2>
+      <button class="add-btn" id="addExpenseBtn">+ Expense</button>
+    </div>
+    <div id="expenseList"></div>
+  </section>
+</main>
+
+<div class="settle-bar">
+  <button class="settle-btn" id="settleBtn">🤝 Settle up &amp; text everyone</button>
+</div>
+
+<!-- Person modal -->
+<div class="modal" id="personModal">
+  <div class="modal-box">
+    <h2 class="modal-title" id="personTitle">Add person</h2>
+    <label class="field">Name
+      <input type="text" id="personName" autocomplete="off" placeholder="e.g. Sam">
+    </label>
+    <label class="field">Mobile number
+      <input type="tel" id="personPhone" autocomplete="off" placeholder="e.g. 021 123 4567">
+    </label>
+    <div class="error" id="personError"></div>
+    <div class="modal-actions">
+      <button class="modal-btn danger" id="personDelete">Delete</button>
+      <button class="modal-btn secondary" data-close>Cancel</button>
+      <button class="modal-btn" id="personSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Expense modal -->
+<div class="modal" id="expenseModal">
+  <div class="modal-box">
+    <h2 class="modal-title" id="expenseTitle">Add expense</h2>
+    <label class="field">What was it for?
+      <input type="text" id="expenseDesc" autocomplete="off" placeholder="e.g. Groceries">
+    </label>
+    <label class="field">Amount ($)
+      <input type="number" id="expenseAmount" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+    </label>
+    <label class="field">Paid by
+      <select id="expensePayer"></select>
+    </label>
+    <div class="split-head">
+      <span>Split equally between</span>
+      <button class="link-btn" id="toggleAll">Select all</button>
+    </div>
+    <div class="split-list" id="splitList"></div>
+    <div class="error" id="expenseError"></div>
+    <div class="modal-actions">
+      <button class="modal-btn danger" id="expenseDelete">Delete</button>
+      <button class="modal-btn secondary" data-close>Cancel</button>
+      <button class="modal-btn" id="expenseSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settle modal -->
+<div class="modal" id="settleModal">
+  <div class="modal-box">
+    <h2 class="modal-title">Who owes who</h2>
+    <div id="settleContent"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="modal-btn secondary" data-close>Close</button>
+      <button class="modal-btn danger" id="clearExpenses" style="flex:1">Mark settled</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'splitit.v1';
+  const COLORS = ['#1cc29f', '#ff7a59', '#5b8def', '#a66bd3', '#f2b134', '#e5533d', '#3cb4c6', '#8bc34a'];
+
+  let state = load();
+  let editingPersonId = null;
+  let editingExpenseId = null;
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved && Array.isArray(saved.people) && Array.isArray(saved.expenses)) return saved;
+    } catch (e) {}
+    return { people: [], expenses: [] };
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function money(cents) {
+    return '$' + (Math.abs(cents) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function person(id) {
+    return state.people.find(p => p.id === id);
+  }
+
+  function personName(id) {
+    const p = person(id);
+    return p ? p.name : 'Someone';
+  }
+
+  function colorFor(id) {
+    const i = state.people.findIndex(p => p.id === id);
+    return COLORS[(i < 0 ? 0 : i) % COLORS.length];
+  }
+
+  // Split an amount in cents across participants. Leftover cents go to the
+  // first few people so the shares always add up to the exact total.
+  function shares(expense) {
+    const ids = expense.splitWith.filter(id => person(id));
+    const out = {};
+    if (!ids.length) return out;
+    const base = Math.floor(expense.amount / ids.length);
+    let remainder = expense.amount - base * ids.length;
+    ids.forEach(id => {
+      out[id] = base + (remainder > 0 ? 1 : 0);
+      if (remainder > 0) remainder--;
+    });
+    return out;
+  }
+
+  // Positive balance = is owed money, negative = owes money.
+  function balances() {
+    const bal = {};
+    state.people.forEach(p => bal[p.id] = 0);
+    state.expenses.forEach(e => {
+      if (!(e.paidBy in bal)) return;
+      const s = shares(e);
+      const ids = Object.keys(s);
+      if (!ids.length) return;
+      bal[e.paidBy] += e.amount;
+      ids.forEach(id => bal[id] -= s[id]);
+    });
+    return bal;
+  }
+
+  // Greedy settle: biggest debtor pays biggest creditor until everyone is square.
+  // This keeps the number of payments to (at most) people - 1.
+  function settlements() {
+    const bal = balances();
+    const debtors = [], creditors = [];
+    Object.entries(bal).forEach(([id, c]) => {
+      if (c < 0) debtors.push({ id, amt: -c });
+      else if (c > 0) creditors.push({ id, amt: c });
+    });
+    debtors.sort((a, b) => b.amt - a.amt);
+    creditors.sort((a, b) => b.amt - a.amt);
+    const out = [];
+    let i = 0, j = 0;
+    while (i < debtors.length && j < creditors.length) {
+      const amt = Math.min(debtors[i].amt, creditors[j].amt);
+      out.push({ from: debtors[i].id, to: creditors[j].id, amount: amt });
+      debtors[i].amt -= amt;
+      creditors[j].amt -= amt;
+      if (debtors[i].amt === 0) i++;
+      if (creditors[j].amt === 0) j++;
+    }
+    return out;
+  }
+
+  // ---------- Rendering ----------
+
+  function render() {
+    const bal = balances();
+    const peopleEl = document.getElementById('peopleList');
+    if (!state.people.length) {
+      peopleEl.innerHTML = '<div class="empty">Add the people you’re splitting with (include yourself).</div>';
+    } else {
+      peopleEl.innerHTML = state.people.map(p => {
+        const b = bal[p.id] || 0;
+        const amt = b === 0
+          ? '<span style="color:var(--muted)">square</span>'
+          : `<span class="${b > 0 ? 'pos' : 'neg'}">${money(b)}<small>${b > 0 ? 'gets back' : 'owes'}</small></span>`;
+        return `<div class="row" data-person="${p.id}">
+          <div class="avatar" style="background:${colorFor(p.id)}">${escapeHtml(p.name.charAt(0).toUpperCase())}</div>
+          <div class="row-main">
+            <div class="row-title">${escapeHtml(p.name)}</div>
+            <div class="row-sub">${escapeHtml(p.phone || 'No number')}</div>
+          </div>
+          <div class="row-amt">${amt}</div>
+        </div>`;
+      }).join('');
+    }
+
+    const expEl = document.getElementById('expenseList');
+    if (!state.expenses.length) {
+      expEl.innerHTML = '<div class="empty">No expenses yet.</div>';
+    } else {
+      expEl.innerHTML = state.expenses.slice().reverse().map(e => {
+        const n = e.splitWith.filter(id => person(id)).length;
+        return `<div class="row" data-expense="${e.id}">
+          <div class="avatar" style="background:${colorFor(e.paidBy)}">🧾</div>
+          <div class="row-main">
+            <div class="row-title">${escapeHtml(e.desc)}</div>
+            <div class="row-sub">${escapeHtml(personName(e.paidBy))} paid · split ${n} way${n === 1 ? '' : 's'}</div>
+          </div>
+          <div class="row-amt">${money(e.amount)}</div>
+        </div>`;
+      }).join('');
+    }
+
+    const total = state.expenses.reduce((s, e) => s + e.amount, 0);
+    document.getElementById('headerTotal').textContent = state.expenses.length ? `Total ${money(total)}` : '';
+    document.getElementById('settleBtn').disabled = !state.expenses.length;
+  }
+
+  // ---------- Modals ----------
+
+  function openModal(id) { document.getElementById(id).classList.add('show'); }
+  function closeModals() { document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }
+
+  document.querySelectorAll('.modal').forEach(m => {
+    m.addEventListener('click', e => {
+      if (e.target === m || e.target.hasAttribute('data-close')) closeModals();
+    });
+  });
+
+  // People
+  function openPerson(id) {
+    editingPersonId = id;
+    const p = id ? person(id) : null;
+    document.getElementById('personTitle').textContent = p ? 'Edit person' : 'Add person';
+    document.getElementById('personName').value = p ? p.name : '';
+    document.getElementById('personPhone').value = p ? p.phone : '';
+    document.getElementById('personError').textContent = '';
+    document.getElementById('personDelete').style.display = p ? '' : 'none';
+    openModal('personModal');
+    setTimeout(() => document.getElementById('personName').focus(), 50);
+  }
+
+  document.getElementById('addPersonBtn').onclick = () => openPerson(null);
+  document.getElementById('peopleList').onclick = e => {
+    const row = e.target.closest('[data-person]');
+    if (row) openPerson(row.dataset.person);
+  };
+
+  document.getElementById('personSave').onclick = () => {
+    const name = document.getElementById('personName').value.trim();
+    const phone = document.getElementById('personPhone').value.trim();
+    const err = document.getElementById('personError');
+    if (!name) { err.textContent = 'Enter a name.'; return; }
+    if (phone && phone.replace(/[^\d]/g, '').length < 6) { err.textContent = 'That number looks too short.'; return; }
+    if (editingPersonId) {
+      Object.assign(person(editingPersonId), { name, phone });
+    } else {
+      const id = uid();
+      state.people.push({ id, name, phone });
+    }
+    save(); render(); closeModals();
+  };
+
+  document.getElementById('personDelete').onclick = () => {
+    const id = editingPersonId;
+    const involved = state.expenses.some(e => e.paidBy === id || e.splitWith.includes(id));
+    if (involved && !confirm(`${personName(id)} is part of some expenses. Deleting them will remove those expenses they paid for and take them out of the others. Continue?`)) return;
+    state.expenses = state.expenses
+      .filter(e => e.paidBy !== id)
+      .map(e => ({ ...e, splitWith: e.splitWith.filter(x => x !== id) }))
+      .filter(e => e.splitWith.length);
+    state.people = state.people.filter(p => p.id !== id);
+    save(); render(); closeModals();
+  };
+
+  // Expenses
+  function updateShares() {
+    const amount = Math.round(parseFloat(document.getElementById('expenseAmount').value || '0') * 100);
+    const checked = [...document.querySelectorAll('#splitList input:checked')].map(i => i.value);
+    const s = shares({ amount: amount > 0 ? amount : 0, splitWith: checked });
+    document.querySelectorAll('#splitList .split-row').forEach(row => {
+      const id = row.querySelector('input').value;
+      row.querySelector('.share').textContent = s[id] != null && amount > 0 ? money(s[id]) : '';
+    });
+    const all = state.people.length && checked.length === state.people.length;
+    document.getElementById('toggleAll').textContent = all ? 'Select none' : 'Select all';
+  }
+
+  function openExpense(id) {
+    if (state.people.length < 2) {
+      alert('Add at least two people first.');
+      return;
+    }
+    editingExpenseId = id;
+    const e = id ? state.expenses.find(x => x.id === id) : null;
+    document.getElementById('expenseTitle').textContent = e ? 'Edit expense' : 'Add expense';
+    document.getElementById('expenseDesc').value = e ? e.desc : '';
+    document.getElementById('expenseAmount').value = e ? (e.amount / 100).toFixed(2) : '';
+    document.getElementById('expensePayer').innerHTML = state.people
+      .map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    if (e && person(e.paidBy)) document.getElementById('expensePayer').value = e.paidBy;
+    const split = e ? e.splitWith : state.people.map(p => p.id);
+    document.getElementById('splitList').innerHTML = state.people.map(p => `
+      <label class="split-row">
+        <input type="checkbox" value="${p.id}" ${split.includes(p.id) ? 'checked' : ''}>
+        <span class="name">${escapeHtml(p.name)}</span>
+        <span class="share"></span>
+      </label>`).join('');
+    document.getElementById('expenseError').textContent = '';
+    document.getElementById('expenseDelete').style.display = e ? '' : 'none';
+    updateShares();
+    openModal('expenseModal');
+    if (!e) setTimeout(() => document.getElementById('expenseDesc').focus(), 50);
+  }
+
+  document.getElementById('addExpenseBtn').onclick = () => openExpense(null);
+  document.getElementById('expenseList').onclick = e => {
+    const row = e.target.closest('[data-expense]');
+    if (row) openExpense(row.dataset.expense);
+  };
+  document.getElementById('expenseAmount').oninput = updateShares;
+  document.getElementById('splitList').onchange = updateShares;
+  document.getElementById('toggleAll').onclick = () => {
+    const boxes = [...document.querySelectorAll('#splitList input')];
+    const allOn = boxes.every(b => b.checked);
+    boxes.forEach(b => b.checked = !allOn);
+    updateShares();
+  };
+
+  document.getElementById('expenseSave').onclick = () => {
+    const desc = document.getElementById('expenseDesc').value.trim();
+    const amount = Math.round(parseFloat(document.getElementById('expenseAmount').value || '0') * 100);
+    const paidBy = document.getElementById('expensePayer').value;
+    const splitWith = [...document.querySelectorAll('#splitList input:checked')].map(i => i.value);
+    const err = document.getElementById('expenseError');
+    if (!desc) { err.textContent = 'Say what it was for.'; return; }
+    if (!(amount > 0)) { err.textContent = 'Enter an amount.'; return; }
+    if (!splitWith.length) { err.textContent = 'Pick at least one person to split with.'; return; }
+    const data = { desc, amount, paidBy, splitWith };
+    if (editingExpenseId) {
+      Object.assign(state.expenses.find(x => x.id === editingExpenseId), data);
+    } else {
+      state.expenses.push({ id: uid(), date: Date.now(), ...data });
+    }
+    save(); render(); closeModals();
+  };
+
+  document.getElementById('expenseDelete').onclick = () => {
+    if (!confirm('Delete this expense?')) return;
+    state.expenses = state.expenses.filter(x => x.id !== editingExpenseId);
+    save(); render(); closeModals();
+  };
+
+  // ---------- Settle up + messages ----------
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  function cleanPhone(phone) {
+    return (phone || '').replace(/[^\d+]/g, '');
+  }
+
+  // Opens the phone's Messages app with the number and text filled in.
+  // iOS wants "&body=", Android wants "?body=".
+  function smsLink(phone, body) {
+    return `sms:${cleanPhone(phone)}${isIOS ? '&' : '?'}body=${encodeURIComponent(body)}`;
+  }
+
+  function messageFor(id, transfers) {
+    const p = person(id);
+    const lines = [];
+    transfers.forEach(t => {
+      if (t.from === id) lines.push(`• You owe ${personName(t.to)} ${money(t.amount)}`);
+      if (t.to === id) lines.push(`• ${personName(t.from)} owes you ${money(t.amount)}`);
+    });
+    return `Hi ${p.name}! Here's where we've landed on our shared expenses 💸\n\n${lines.join('\n')}\n\nSent from Split It`;
+  }
+
+  function openSettle() {
+    const transfers = settlements();
+    const el = document.getElementById('settleContent');
+    if (!transfers.length) {
+      el.innerHTML = '<div class="settled-all">🎉 Everyone’s square — nobody owes anything.</div>';
+      openModal('settleModal');
+      return;
+    }
+
+    const involved = state.people.filter(p => transfers.some(t => t.from === p.id || t.to === p.id));
+    const msgs = involved.map(p => {
+      const body = messageFor(p.id, transfers);
+      const hasPhone = cleanPhone(p.phone).length > 0;
+      return `<div class="msg">
+        <div class="msg-head">
+          <strong>${escapeHtml(p.name)}</strong>
+          ${hasPhone
+            ? `<a class="send-btn" href="${smsLink(p.phone, body)}">Text ${escapeHtml(p.name)}</a>`
+            : `<span class="send-btn disabled">No number</span>`}
+        </div>
+        <div class="msg-body">${escapeHtml(body)}</div>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = `
+      ${transfers.map(t => `<div class="transfer">
+        <strong>${escapeHtml(personName(t.from))}</strong>
+        <span class="arrow">pays →</span>
+        <strong>${escapeHtml(personName(t.to))}</strong>
+        <span class="amt">${money(t.amount)}</span>
+      </div>`).join('')}
+      <div class="section-label">Messages — tap to send</div>
+      ${msgs}`;
+
+    el.querySelectorAll('a.send-btn').forEach(a => {
+      a.addEventListener('click', () => {
+        a.classList.add('sent');
+        a.textContent = '✓ Sent';
+      });
+    });
+    openModal('settleModal');
+  }
+
+  document.getElementById('settleBtn').onclick = openSettle;
+
+  document.getElementById('clearExpenses').onclick = () => {
+    if (!confirm('Mark everything as settled? This clears all expenses (people are kept).')) return;
+    state.expenses = [];
+    save(); render(); closeModals();
+  };
+
+  render();
+</script>
+</body>
+</html>
